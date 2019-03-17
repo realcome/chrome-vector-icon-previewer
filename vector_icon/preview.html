@@ -1,0 +1,397 @@
+<html>
+<head>
+    <style>
+    body {
+        margin:0;
+        padding:0;
+        min-width:100vw;
+    }
+    
+     #choose_file {
+        display:none;
+     }
+     
+     .page_title {
+        margin:auto;
+        margin-top:20px;
+        text-align:center;
+     }
+     
+     #preview_container {
+        width:600px;
+        margin:auto;
+        margin-top:60px;
+     }
+     
+     .center_child {
+     
+        display: -webkit-box;
+        display: -webkit-flex;
+      
+        display: -moz-box;
+        display: -moz-flex;
+      
+        display: -ms-flexbox;
+      
+        display: flex;
+      
+        /* 水平居中*/
+        -webkit-box-align: center;
+        -moz-box-align: center;
+        -ms-flex-pack:center;/* IE 10 */
+      
+        -webkit-justify-content: center;
+        -moz-justify-content: center;
+        justify-content: center;/* IE 11+,Firefox 22+,Chrome 29+,Opera 12.1*/
+      
+        /* 垂直居中 */
+        -webkit-box-pack: center;
+        -moz-box-pack: center;
+        -ms-flex-align:center;/* IE 10 */
+      
+        -webkit-align-items: center;
+        -moz-align-items: center;
+        align-items: center;
+     }
+     
+     #drag_area {
+        width:100%;
+        height:300px;
+        border:5px dashed rgba(0, 0, 0, .2);
+        border-radius:5px;
+
+        cursor:pointer;
+         transition:all 1s;
+     }
+     #drag_area:hover {
+        background:rgba(0, 0, 0, .6);
+     }
+     #file_label {
+         vertical-align:middle;
+         display:inline-block;
+         line-height:40px;
+         height:40px;
+         padding: 5px 22px;
+         
+         font-size: 1.25em;
+        font-weight: 700;
+        color:rgba(0, 0, 0, .2);
+        display: inline-block;
+        border-radius:6px;
+        cursor:pointer;
+     }
+     
+      #list {
+        list-style:none;
+      }
+      
+      #list li{
+        border-top: 2px solid rgba(0, 0, 0, .2);
+        margin:10px;
+      }
+    </style>
+
+</head>
+<body>
+    <h2 class="page_title">Chrome Vector Icon Previewer</h2>
+
+    <div id="preview_container">
+        <div id="drag_area" class="center_child">
+            <!--<input type="file" name="choose_file" id="choose_file" class="inputfile" accept="*.icon"/>-->
+            <label id="file_label"  class="center_child" for="choose_file">Drag Files to Here...</label>
+        </div>
+        
+        <div id="file_info_list">
+            <ul id="list">
+            
+            </ul>
+        </div>
+        
+        <div id ="preview-original">
+        
+        </div>
+    </div>
+
+    <script>
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const SCALE = 4;
+
+function notimplemented(msg) {
+  console.log('notimplemented(vector-icon): ' + msg);
+}
+
+class VectorIcon {
+  constructor(commands, delegate) {
+    this.commands_ = commands;
+    this.delegate_ = delegate;
+    this.svg_ = null;
+    this.paths_ = [];
+    this.currentPath_ = null;
+    this.pathD_ = [];
+    this.clipRect_ = null;
+  }
+
+  paint() {
+    var ncmds = this.commands_.length;
+    this.svg_ = document.createElementNS(SVG_NS, 'svg');
+    this.svg_.setAttribute('width', '48');
+    this.svg_.setAttribute('height', '48');
+    this.svg_.setAttribute('fill-rule', 'evenodd');
+    this.svg_.classList.add('vector-svg');
+    this.currentPath_ = this.createPath();
+    for (var i = 0; i < ncmds; ++i) {
+      if (this.commands_[i][0] == 'END')
+        break;
+      this.processCommand(this.commands_[i]);
+    }
+    if (this.pathD_.length > 0)
+      this.currentPath_.setAttribute('d', this.pathD_.join(' '));
+
+    // Just set the clip-path on all paths, I guess?
+    if (this.clipRect_) {
+      var clipPath = document.createElementNS(SVG_NS, 'clipPath');
+      clipPath.setAttribute('id', 'clip-path');
+      this.svg_.appendChild(clipPath);
+
+      var rect = document.createElementNS(SVG_NS, 'rect');
+      rect.setAttribute('x', this.clipRect_[0]);
+      rect.setAttribute('y', this.clipRect_[1]);
+      rect.setAttribute('width', this.clipRect_[2]);
+      rect.setAttribute('height', this.clipRect_[3]);
+      clipPath.appendChild(rect);
+
+      this.paths_.forEach(
+          path => path.setAttribute('clip-path', 'url(#clip-path)')
+      );
+    }
+
+    // Add all the paths.
+    var svg = this.svg_;
+    this.paths_.forEach(path => svg.appendChild(path));
+    return this.svg_;
+  }
+
+  closeCurrentPath() {
+    if (this.currentPath_) {
+      this.currentPath_.setAttribute('d', this.pathD_.join(' '));
+      this.pathD_ = [];
+      this.currentPath_ = null;
+    }
+  }
+
+  createPath() {
+    this.closeCurrentPath();
+    var path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('fill', 'gray');
+    path.setAttribute('stroke', 'gray');
+    path.setAttribute('stroke-width', '0px');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('shape-rendering', 'geometricPrecision');
+    this.paths_.push(path);
+    return path;
+  }
+
+  createCircle(params) {
+    var cx = parseFloat(params[0]);
+    var cy = parseFloat(params[1]);
+    var r = parseFloat(params[2]);
+    var cmds = [
+      ['M', cx, cy],
+      ['m', -r, '0'],
+      ['a', r, r, 0, 1, 0, r*2, 0],
+      ['a', r, r, 0, 1, 0, -r*2, 0],
+    ];
+    cmds.forEach(cmd => this.pathD_.push(cmd.join(' ')));
+  }
+
+  createRoundRect(params) {
+    var x = parseFloat(params[0]);
+    var y = parseFloat(params[1]);
+    var width = parseFloat(params[2]);
+    var height = parseFloat(params[3]);
+    var rx = parseFloat(params[4]);
+    // We can probably not add the arcs if rx == 0?
+    var cmds = [
+      ['M', x + rx, y],
+      ['h', width - rx - rx],
+      ['a', rx, rx, 0, 0, 1, rx, rx],
+      ['v', height - rx - rx],
+      ['a', rx, rx, 0, 0, 1, -rx, rx],
+      ['h', -(width - rx - rx)],
+      ['a', rx, rx, 0, 0, 1, -rx, -rx],
+      ['v', -(height - rx - rx)],
+      ['a', rx, rx, 0, 0, 1, rx, -rx]
+    ];
+    cmds.forEach(cmd => this.pathD_.push(cmd.join(' ')));
+  }
+
+  processCommand(cmd) {
+    if (cmd[0] == 'CANVAS_DIMENSIONS') {
+      this.svg_.setAttribute('width', cmd[1]);
+      this.svg_.setAttribute('height', cmd[1]);
+      return;
+    }
+
+    if (cmd[0] == 'NEW_PATH') {
+      this.currentPath_ = this.createPath();
+      return;
+    }
+
+    if (cmd[0] == 'PATH_COLOR_ARGB') {
+      var color =
+          'rgba(' + [cmd[2], cmd[3], cmd[4], cmd[1]]
+              .map(x => parseInt(x)).join(',') + ')';
+      this.currentPath_.style['fill'] = color;
+      this.currentPath_.style['stroke'] = color;
+      return;
+    }
+
+    if (cmd[0] == 'PATH_MODE_CLEAR') {
+      // XXX: what do?
+      notimplemented(cmd[0]);
+      return;
+    }
+
+    if (cmd[0] == 'STROKE') {
+      this.currentPath_.setAttribute('stroke-width', cmd[1] + 'px');
+      return;
+    }
+
+    if (cmd[0] == 'CAP_SQUARE') {
+      this.currentPath_.style['stroke-linecap'] = 'square';
+      return;
+    }
+
+    if (cmd[0] == 'DISABLE_AA') {
+      this.currentPath_.setAttribute('shape-rendering', 'crispEdges');
+      return;
+    }
+
+    if (cmd[0] == 'CLIP') {
+      this.clipRect_ = cmd.splice(1).map(x => x.trim() + 'px');
+      return;
+    }
+
+    if (cmd[0] == 'CIRCLE') {
+      this.createCircle(cmd.splice(1));
+      return;
+    }
+
+    if (cmd[0] == 'ROUND_RECT') {
+      this.createRoundRect(cmd.splice(1));
+      return;
+    }
+
+    var drawCommands = {
+      'MOVE_TO': 'M',
+      'R_MOVE_TO': 'm',
+      'ARC_TO': 'A',
+      'R_ARC_TO': 'a',
+      'LINE_TO': 'L',
+      'R_LINE_TO': 'l',
+      'H_LINE_TO': 'H',
+      'R_H_LINE_TO': 'h',
+      'V_LINE_TO': 'V',
+      'R_V_LINE_TO': 'v',
+      'CUBIC_TO': 'C',
+      'R_CUBIC_TO': 'c',
+      'CUBIC_TO_SHORTHAND': 'S',
+      'CLOSE': 'Z',
+    };
+    if (cmd[0] in drawCommands) {
+      var nc = [drawCommands[cmd[0]]].concat(cmd.splice(1).map(parseFloat));
+      this.pathD_.push(nc.join(' '));
+      return;
+    }
+
+    notimplemented(cmd.join(','));
+  }
+};    
+    
+    var current_file_info = '';
+    
+    
+       function check_file_api() {
+        if (window.File && window.FileReader && window.FileList && window.Blob)
+            return true;
+        else
+            return false;
+       }
+       
+       
+        function update_preview(data, file_info) {
+              var lines = data.split('\n').filter(
+                line => (line.length && !line.startsWith('//'))
+              );
+              var commands =
+                  lines.map(line => line.trim().split(',').filter(x => x.length > 0));
+            var icon = new VectorIcon(commands);
+            var svg = icon.paint();
+            //var original = document.getElementById('preview-original');
+            //  original.appendChild(svg);
+              
+              var svgSource = (new XMLSerializer).serializeToString(svg);
+
+              var scaledSvg = document.createElement('img');
+              scaledSvg.setAttribute('width',
+                  parseFloat(svg.getAttribute('width')) * SCALE);
+              scaledSvg.setAttribute('height',
+                  parseFloat(svg.getAttribute('height')) * SCALE);
+              scaledSvg.setAttribute('src',
+                 'data:image/svg+xml;utf8,'+svgSource);
+            
+              var item = document.createElement('li');
+              var file_ele = document.createElement('div');
+              file_ele.className = 'file_info';
+              file_ele.innerHTML = file_info;
+              var preview_ele =  document.createElement('div');
+              preview_ele.className='preview_item';
+            var list_ele = document.getElementById('list');
+              preview_ele.appendChild(scaledSvg);
+              item.appendChild(file_ele);
+              item.appendChild(preview_ele);
+              list_ele.appendChild(item);
+        }
+       
+       // 必须阻止dragenter和dragover事件的默认行为，这样才能触发 drop 事件
+        function fileSelect(evt) {
+          evt.stopPropagation();
+          evt.preventDefault();
+
+          var files = evt.dataTransfer.files; // 文件对象
+          //var output = [];
+
+          // 处理多文件
+          for (var i = 0, f; f = files[i]; i++) {
+            if (!f.name.endsWith('.icon'))
+                continue;
+
+            current_file_info = ('<strong>' + escape(f.name) + '</strong> (' + (f.type || 'n/a') + ') - ' +
+                        f.size + ' bytes, last modified: ' +
+                        f.lastModifiedDate.toLocaleDateString());
+            
+            var reader = new FileReader();
+            reader.custom_info = current_file_info;
+            reader.onload = function(file) {
+                update_preview(file.target.result, this.custom_info);
+            }
+            
+            reader.readAsBinaryString(f);
+          }
+          // 显示文件信息
+          //document.getElementById('list').innerHTML = output.join('');
+        }
+
+        function dragOver(evt) {
+          evt.stopPropagation();
+          evt.preventDefault();
+          evt.dataTransfer.dropEffect = 'copy';
+        }
+
+        // 监听器
+        var dropZone = document.getElementById('drag_area');
+        dropZone.addEventListener('dragover', dragOver, false);
+        dropZone.addEventListener('drop', fileSelect, false);
+    </script>
+</body>
+</html>
